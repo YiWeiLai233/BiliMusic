@@ -1,0 +1,77 @@
+# Bili Music
+
+B 站收藏夹纯音频播放器 —— 扫码登录后把你的收藏夹（以及本地音乐、B 站链接）当作一个音乐播放器来用。
+
+只取 DASH 音频流，不拉画面，边下边播不落盘。基于 Electron。
+
+## 功能
+
+- **扫码登录**：内置 B 站官方二维码，cookie 只写本地 `.userdata/`，不上传任何服务器
+- **收藏夹当歌单**：登录后自动列出全部收藏夹，非音乐分区的视频自动过滤，可手动用 ♪ 标记覆盖
+- **纯音频流式播放**：走本地 Range 代理透传 B 站 CDN，支持拖动进度、切音质（64K / 132K / 192K / 杜比 / HiRes），不缓存到磁盘
+- **多 P 视频自动拆分**：一个多 P 视频按分 P 拆成独立曲目（`视频标题 · P2 分P名`），每首可单独播放、标记、收藏
+- **我的库**
+  - 本地音乐：选文件夹扫描，引用原位置不复制，读 ID3 标签（歌名 / 歌手 / 专辑 / 封面 / 时长）
+  - 链接收藏：粘贴 B 站链接批量导入，支持短链 / av 号 / 单视频 / 多 P，可勾选只导入指定分 P
+- **我喜欢的歌**：本地音乐 / 链接收藏 / 收藏夹三源自动汇总，支持「爱心跟随」（持续同步）和「一次性全量加入」，手移除的记排除表不会复活
+- **歌单**：自建歌单、拖拽排序、重命名、导出 / 导入 JSON
+- **后台播放**：关闭 / 最小化可收进托盘继续播，全局媒体键 + Windows 媒体浮层，开机自启开关
+- **关闭行为可选**：每次询问 / 收进托盘 / 直接退出
+
+## 运行
+
+```bash
+npm install
+npm start
+```
+
+`npm start` 实际执行 `node scripts/launch.js`：因为在本机上 electron.exe 位于项目目录树下时 Windows 托盘注册会失败（见下方「已知问题」），启动脚本会把 `node_modules/electron/dist` 复制到 `%LOCALAPPDATA%\BiliMusicRuntime` 再从那运行。
+
+## 打包
+
+```bash
+npm run dist
+```
+
+产物在 `dist/`。当前是 NSIS 安装包，`perMachine: true`（安装时需要管理员权限，因此可以装到任意目录，包括 `D:\`）。
+
+## 测试
+
+```bash
+npm run test:e2e       # 真实接口：登录态、元信息、播放地址、代理 Range、封面
+npm run test:ui        # 渲染进程 UI 全流程（假数据桩）
+npm run test:layout    # 三档窗口尺寸布局审计
+node scripts/test-library.js      # 本地库 + 歌单 + 本地代理
+node scripts/test-loved.js        # 「我喜欢的歌」三源汇总与排除表（需登录）
+node scripts/test-multipage.js    # 多 P 拆分（真实接口）
+node scripts/test-part-audio.js   # 各分 P 音频流可用性
+node scripts/test-hidden.js       # 收藏夹条目隐藏
+```
+
+## 已知问题
+
+- **托盘图标与 exe 路径**：electron.exe 若位于本机 `D:\bilibiliMusicPlayer` 目录树下，Windows 托盘注册必定失败（`tray.getBounds()` 恒为 0）。已排除 ACL / 所有者 / token / userData / exe 内容等因素，换到任意其他目录即正常。`scripts/launch.js` 就是为绕开它而写的。
+- **SmartScreen**：安装包未做代码签名，Windows 会提示「无法识别的应用」，点「更多信息 → 仍要运行」即可。
+- **音频直链有效期约 2 小时**，过期自动重新调 playurl。
+
+## 结构
+
+```
+main.js              主进程：窗口 / 托盘 / 媒体键 / IPC / 开机自启
+preload.js           contextBridge 暴露 window.api
+renderer/
+  index.html         界面骨架
+  style.css          深色主题
+  app.js             状态机：登录 / 列表 / 过滤 / 播放 / 歌单 / 弹层
+src/
+  bili.js            B 站接口：WBI 签名、扫码、收藏夹、playurl、链接解析
+  audioProxy.js      本地 Range 代理：B 站音频 / 本地文件 / 封面
+  library.js         本地库数据层：曲目、歌单、我喜欢的歌、隐藏表
+  localLibrary.js    本地文件扫描 + 标签读取
+  store.js           设置持久化
+scripts/             启动器、图标生成、各测试
+```
+
+## 说明
+
+本项目仅用于个人本地整理与播放自己已收藏的内容，不做下载 / 转存 / 分发。所有请求都带正常浏览器 UA 与 Referer，带节流，音频流不落盘。

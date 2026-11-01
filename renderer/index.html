@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: http://127.0.0.1:*; media-src 'self' blob: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src http://127.0.0.1:*"
+    />
+    <title>Bili Music</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ───────────────────────── 顶栏 ───────────────────────── -->
+    <header class="titlebar">
+      <div class="tb-left">
+        <div class="logo">♪</div>
+        <span class="tb-title">Bili Music</span>
+      </div>
+      <div class="tb-drag"></div>
+      <div class="tb-right">
+        <button class="tb-btn" id="btn-settings" title="设置">
+          <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7zm7.43-2.53c.04-.32.07-.64.07-.97s-.03-.65-.07-.97l2.11-1.66a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.3 7.3 0 0 0-1.69-.98l-.37-2.65A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.5.42l-.37 2.65c-.61.25-1.17.59-1.69.98l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.64L4.57 11c-.04.32-.07.65-.07.97s.03.65.07.97l-2.11 1.66a.5.5 0 0 0-.12.64l2 3.46c.13.22.39.3.6.22l2.49-1c.52.4 1.08.73 1.69.98l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1c.21.08.47 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.66z"/></svg>
+        </button>
+        <div class="tb-sep"></div>
+        <button class="tb-btn win-btn" id="btn-min" title="最小化">
+          <svg viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        </button>
+        <button class="tb-btn win-btn" id="btn-max" title="最大化">
+          <svg viewBox="0 0 12 12"><rect x="2.6" y="2.6" width="6.8" height="6.8" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        </button>
+        <button class="tb-btn win-btn close" id="btn-close" title="关闭到托盘">
+          <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <!-- ───────────────────── 侧边栏 ───────────────────── -->
+      <aside class="sidebar">
+        <div class="user-card" id="user-card">
+          <div class="avatar" id="user-avatar">?</div>
+          <div class="user-meta">
+            <div class="user-name" id="user-name">未登录</div>
+            <div class="user-sub" id="user-sub">扫码登录 B 站</div>
+          </div>
+          <button class="mini-btn" id="btn-login">登录</button>
+        </div>
+
+        <div class="side-section">
+          <div class="side-head">
+            <span>我的库</span>
+            <div class="side-head-actions">
+              <button class="icon-btn" id="btn-add-folder" title="添加本地音乐文件夹">
+                <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-1 8h-2v2h-2v-2h-2v-2h2v-2h2v2h2v2z"/></svg>
+              </button>
+              <button class="icon-btn" id="btn-add-link" title="通过 B 站链接添加">
+                <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z"/></svg>
+              </button>
+              <button class="icon-btn" id="btn-new-playlist" title="新建歌单">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+              </button>
+              <button class="icon-btn" id="btn-lib-menu" title="导入 / 导出歌单">
+                <svg viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4zm-7 2h14v2H5v-2z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="folder-list" id="library-list">
+            <div class="empty-hint">还没有本地音乐</div>
+          </div>
+        </div>
+
+        <div class="side-section grow">
+          <div class="side-head">
+            <span>我的收藏夹</span>
+            <button class="icon-btn" id="btn-refresh-folders" title="刷新收藏夹">
+              <svg viewBox="0 0 24 24"><path d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            </button>
+          </div>
+          <div class="folder-list" id="folder-list">
+            <div class="empty-hint">登录后自动加载</div>
+          </div>
+        </div>
+
+        <div class="side-foot">
+          <button class="ghost-btn" id="btn-tray">最小化到托盘</button>
+        </div>
+      </aside>
+
+      <!-- ───────────────────── 主区域 ───────────────────── -->
+      <section class="content">
+        <div class="content-head">
+          <div class="head-info">
+            <h1 id="folder-title">选择一个收藏夹</h1>
+            <p id="folder-sub">登录 B 站后，这里会列出你的收藏夹</p>
+          </div>
+          <div class="head-tools">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+              <input id="search-input" type="search" placeholder="搜索歌名 / UP 主" />
+            </div>
+            <label class="toggle-pill" title="只显示音乐分区 / 音频类条目">
+              <input type="checkbox" id="chk-only-music" checked />
+              <span>仅音乐</span>
+            </label>
+            <button class="ghost-btn" id="btn-play-all">全部播放</button>
+          </div>
+        </div>
+
+        <div class="list-head">
+          <div class="col-idx">#</div>
+          <div class="col-title">歌曲</div>
+          <div class="col-upper">UP 主</div>
+          <div class="col-dur">时长</div>
+          <div class="col-heart" title="收藏到我喜欢的歌">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+          </div>
+          <div class="col-mark" title="手动标记为音乐">♪</div>
+        </div>
+
+        <div class="song-list" id="song-list">
+          <div class="list-empty">
+            <div class="list-empty-icon">♪</div>
+            <p>还没有内容</p>
+            <span>先在左侧选择收藏夹</span>
+          </div>
+        </div>
+
+        <!-- 播放条 -->
+        <div class="playerbar">
+          <div class="pb-left">
+            <div class="pb-cover" id="pb-cover">
+              <span>♪</span>
+            </div>
+            <div class="pb-meta">
+              <div class="pb-title" id="pb-title">未在播放</div>
+              <div class="pb-artist" id="pb-artist">—</div>
+            </div>
+          </div>
+
+          <div class="pb-center">
+            <div class="pb-controls">
+              <button class="ctrl" id="btn-prev" title="上一首 (Ctrl+←)">
+                <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+              </button>
+              <button class="ctrl play" id="btn-play" title="播放 / 暂停 (空格)">
+                <svg viewBox="0 0 24 24" id="icon-play"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+              <button class="ctrl" id="btn-next" title="下一首 (Ctrl+→)">
+                <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>
+              </button>
+            </div>
+            <div class="pb-progress">
+              <span class="t" id="time-cur">0:00</span>
+              <div class="bar" id="bar-progress">
+                <div class="bar-bg"></div>
+                <div class="bar-fill" id="prog-fill"></div>
+                <div class="bar-knob" id="prog-knob"></div>
+              </div>
+              <span class="t" id="time-total">0:00</span>
+            </div>
+          </div>
+
+          <div class="pb-right">
+            <button class="ctrl sm" id="btn-mode" title="播放模式">
+              <svg viewBox="0 0 24 24" id="icon-mode"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+            </button>
+            <button class="ctrl sm" id="btn-quality" title="音质">
+              <span class="q-label" id="q-label">自动</span>
+            </button>
+            <div class="volume">
+              <button class="ctrl sm" id="btn-mute" title="静音">
+                <svg viewBox="0 0 24 24" id="icon-volume"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05A4.47 4.47 0 0 0 16.5 12z"/></svg>
+              </button>
+              <div class="bar vol" id="bar-volume">
+                <div class="bar-bg"></div>
+                <div class="bar-fill" id="vol-fill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ───────────────────── 登录弹层 ───────────────────── -->
+    <div class="modal-mask" id="login-mask" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h2>扫码登录</h2>
+          <button class="icon-btn" id="btn-login-close">✕</button>
+        </div>
+        <div class="qr-wrap" id="qr-wrap">
+          <div class="qr-skeleton">加载中…</div>
+        </div>
+        <p class="qr-status" id="qr-status">请使用哔哩哔哩手机客户端扫码</p>
+        <p class="qr-tip">Cookie 仅保存在本机 <code>.userdata/cookies.json</code></p>
+      </div>
+    </div>
+
+    <!-- ───────────────────── 设置弹层 ───────────────────── -->
+    <div class="modal-mask" id="settings-mask" hidden>
+      <div class="modal wide">
+        <div class="modal-head">
+          <h2>设置</h2>
+          <button class="icon-btn" id="btn-settings-close">✕</button>
+        </div>
+        <div class="settings-body">
+          <div class="row"><span>点关闭按钮时</span>
+            <select id="set-close-action">
+              <option value="ask">每次都问我</option>
+              <option value="tray">收进托盘继续播放</option>
+              <option value="quit">退出程序</option>
+            </select>
+          </div>
+          <label class="row"><span>最小化时收进托盘</span><input type="checkbox" id="set-min-tray" /></label>
+          <label class="row"><span>开机自动启动（后台静音启动）</span><input type="checkbox" id="set-autolaunch" /></label>
+          <div class="row"><span>音质</span>
+            <select id="set-quality">
+              <option value="0">自动（最高）</option>
+              <option value="30280">192K 高品质</option>
+              <option value="30232">132K 标准</option>
+              <option value="30216">64K 流畅</option>
+            </select>
+          </div>
+          <div class="row"><span>数据目录</span><code id="set-datadir" class="path">—</code></div>
+          <div class="row"><span>版本</span><code id="set-version" class="path">—</code></div>
+          <div class="row"><span>清理缓存</span><button class="ghost-btn" id="btn-clear-cache">清空</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────── 通过 B 站链接添加 ───────────────────── -->
+    <div class="modal-mask" id="link-mask" hidden>
+      <div class="modal wide">
+        <div class="modal-head">
+          <h2>通过 B 站链接添加</h2>
+          <button class="icon-btn" id="btn-link-close">✕</button>
+        </div>
+        <div class="link-body">
+          <textarea id="link-input" rows="4" placeholder="粘贴 B 站视频链接或 BV 号，每行一个&#10;支持：https://www.bilibili.com/video/BV…&#10;       BV1xx411c7mD、av170001、b23.tv 短链&#10;       带 ?p=2 只导入那一 P，否则多 P 视频会全部导入"></textarea>
+          <div class="link-actions">
+            <button class="ghost-btn" id="btn-link-parse">解析</button>
+            <span class="link-hint" id="link-hint"></span>
+          </div>
+          <div class="link-result" id="link-result" hidden>
+            <div class="link-result-head">
+              <span id="link-result-count">—</span>
+              <div class="link-pick-actions">
+                <button class="mini-btn" id="btn-link-all">全选</button>
+                <button class="mini-btn" id="btn-link-none">全不选</button>
+              </div>
+              <button class="ghost-btn primary" id="btn-link-confirm">加入我的库</button>
+            </div>
+            <div class="link-list" id="link-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────── 扫描进度 ───────────────────── -->
+    <div class="modal-mask" id="scan-mask" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h2>正在扫描</h2>
+        </div>
+        <div class="scan-body">
+          <p class="scan-dir" id="scan-dir">—</p>
+          <div class="scan-bar"><div class="scan-bar-fill" id="scan-bar-fill"></div></div>
+          <p class="scan-status" id="scan-status">准备中…</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 音质选择气泡 -->
+    <div class="popover" id="quality-pop" hidden></div>
+
+    <!-- ───────────────────── 右键菜单 ───────────────────── -->
+    <div class="ctx-menu" id="ctx-menu" hidden></div>
+
+    <!-- ───────────────────── 新建歌单 ───────────────────── -->
+    <div class="modal-mask" id="pl-mask" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h2 id="pl-title">新建歌单</h2>
+          <button class="icon-btn" id="btn-pl-close">✕</button>
+        </div>
+        <div class="pl-body">
+          <input type="text" id="pl-name" placeholder="歌单名称" maxlength="60" />
+          <div class="pl-hint" id="pl-hint"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="ghost-btn" id="btn-pl-cancel">取消</button>
+          <button class="ghost-btn primary" id="btn-pl-ok">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <audio id="audio" preload="auto"></audio>
+    <script src="app.js"></script>
+  </body>
+</html>

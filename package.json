@@ -1,0 +1,73 @@
+{
+  "name": "bili-music-player",
+  "version": "0.1.0",
+  "description": "B 站收藏夹纯音频播放器（扫码登录 / 边下边播 / 托盘后台播放）",
+  "main": "main.js",
+  "scripts": {
+    "start": "node scripts/launch.js",
+    "dist": "electron-builder --win",
+    "icons": "python scripts/make-icons.py",
+    "test:e2e": "node scripts/test-e2e.js",
+    "test:ui": "electron scripts/test-ui.js --no-sandbox --disable-gpu --disable-crash-reporter",
+    "test:layout": "electron scripts/test-layout.js --no-sandbox --disable-gpu --disable-crash-reporter"
+  },
+  "keywords": [
+    "bilibili",
+    "music",
+    "player",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.bilimusic.player",
+    "productName": "Bili Music",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "src/**/*",
+      "assets/icon.png",
+      "assets/icon.ico",
+      "assets/tray.png",
+      "assets/tray-16.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bili Music",
+      "artifactName": "BiliMusic-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    },
+    "asar": true,
+    "compression": "normal"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "music-metadata": "^12.3.3",
+    "qrcode": "^1.5.4"
+  }
+}
