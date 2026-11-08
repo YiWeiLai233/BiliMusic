@@ -321,20 +321,58 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                // B 站直链有效期约 2 小时，长播时可能在歌与歌之间过期。
+                // 遇到 4xx 先自动重解析一次并原地续播，别直接甩错误给用户。
+                val httpCode = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)
+                    ?.responseCode
+                val t = _player.value.current
+                val stale = httpCode == 403 || httpCode == 410 || httpCode == 412 || httpCode == 404
+                if (stale && t != null && t.type != "local" && !selfHealing) {
+                    selfHealing = true
+                    val resumeAt = PlayerHolder.peek()?.currentPosition ?: 0L
+                    viewModelScope.launch {
+                        val fresh = resolveUrl(t)
+                        val p = PlayerHolder.peek()
+                        val idx = p?.currentMediaItemIndex ?: -1
+                        if (fresh != null && p != null && idx >= 0) {
+                            p.replaceMediaItem(idx, PlayerHolder.mediaItemOf(t, fresh))
+                            p.seekTo(idx, resumeAt)
+                            p.play()
+                            _player.update { it.copy(error = null, loading = false) }
+                        } else {
+                            _player.update {
+                                it.copy(error = "重新取地址失败：${readable(error)}", loading = false)
+                            }
+                        }
+                        selfHealing = false
+                    }
+                    return
+                }
                 _player.update { it.copy(error = readable(error), loading = false) }
             }
         })
     }
 
     private fun readable(e: androidx.media3.common.PlaybackException): String = when (e.errorCode) {
-        androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-            "音频地址被拒绝（可能已过期），请重新播放"
+        androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
+            val code = (e.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+            when (code) {
+                403 -> "音频地址被拒绝（403）。如果每首歌都这样，多半是 CDN 拦了 UA，请更新到最新版本"
+                404 -> "音频地址不存在（404），这条可能已被删除"
+                410, 412 -> "音频地址已过期（$code），请重新播放试试"
+                else -> "音频地址被拒绝${code?.let { "（HTTP $it）" } ?: "（可能已过期）"}，请重新播放"
+            }
+        }
         androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "网络连接失败，检查手机网络"
         androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "网络超时，换个网络再试"
+        androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED -> "音频格式解析失败"
         else -> "播放出错：${e.errorCodeName}"
     }
 
     private var posJob: kotlinx.coroutines.Job? = null
+
+    /** 防止「重新解析 → 又失败 → 再解析」打成死循环 */
+    private var selfHealing = false
 
     private fun tickPosition() {
         if (_player.value.playing && posJob == null) {

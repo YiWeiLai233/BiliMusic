@@ -46,6 +46,16 @@ import com.bilimusic.player.net.FavFolder
 import com.bilimusic.player.sync.TrackCore
 
 /**
+ * LazyColumn 的 item key：**必须带命名空间前缀**。
+ *
+ * 页面里「已同步的收藏夹」和「账号里的收藏夹」在同一个 LazyColumn 中，
+ * 而已同步的收藏夹本来就在账号列表里 —— 同一个 id 会出现在两个 `items()` 里。
+ * 如果两处都用裸 id，LazyColumn 会因重复 key 直接抛异常（点进这页就闪退）。
+ */
+internal fun folderListKey(folderId: Long, mirrored: Boolean): String =
+    if (mirrored) "mirror:$folderId" else "account:$folderId"
+
+/**
  * 收藏夹页：上面是已关注（有本地镜像）的收藏夹，下面是账号里全部收藏夹。
  * 关注 = 建立本地镜像并可以随时增量同步；这一点和桌面端的「跟随收藏夹」一致。
  */
@@ -91,7 +101,7 @@ fun FavoritesScreen(
                             modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 6.dp),
                         )
                     }
-                    items(followed, key = { it.folderId.toString() }) { s ->
+                    items(followed, key = { folderListKey(it.folderId, mirrored = true) }) { s ->
                         Row(
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
@@ -123,7 +133,7 @@ fun FavoritesScreen(
                         modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
                     )
                 }
-                items(folders, key = { it.id.toString() }) { f ->
+                items(folders, key = { folderListKey(it.id, mirrored = false) }) { f ->
                     FolderRow(f, vm) {
                         vm.syncFolder(f)
                         revision++

@@ -297,7 +297,9 @@ class BiliClient(context: Context) {
             out.addAll(list.mapNotNull { normalizeFolder(it) })
             if (list.size < 100) break
         }
-        return out
+        // 分页翻页期间收藏夹可能增减，导致同一个 id 出现在两页里。
+        // 调用方拿这些 id 当 LazyColumn 的 key，重复就会抛异常，所以这里必须去重。
+        return out.distinctBy { it.id }
     }
 
     suspend fun favItems(

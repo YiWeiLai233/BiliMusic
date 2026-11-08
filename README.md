@@ -62,7 +62,7 @@ node scripts/test-hidden.js       # 收藏夹条目隐藏
 cd android && gradle :app:assembleRelease
 # 产物：android/app/build/outputs/apk/release/app-release.apk
 
-# 单元测试（56 项）：包括 Robolectric 在 SDK 24/34/35 上真实启动 MainActivity
+# 单元测试（68 项）：包括 Robolectric 在 SDK 24/34/35 上真实启动 MainActivity
 gradle :app:testDebugUnitTest
 ```
 
