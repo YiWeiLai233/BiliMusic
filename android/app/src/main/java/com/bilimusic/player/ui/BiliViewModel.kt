@@ -305,19 +305,29 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
                     _player.update { it.copy(playing = false) }
+                    // 播放器里只有一个 item，播完不会自动进下一首，
+                    // 队列的推进由这里接管（顺序播放模式下也就自然停住）。
+                    val st = _player.value
+                    if (st.queue.isEmpty() || settings.playMode == "sequential") return
+                    when (settings.playMode) {
+                        "loop-one" -> {
+                            val p2 = PlayerHolder.peek() ?: return
+                            p2.seekTo(0L)
+                            p2.play()
+                        }
+                        "shuffle" -> startAt(st.queue.indices.random())
+                        else -> {
+                            val nextIdx = if (st.index + 1 < st.queue.size) st.index + 1 else 0
+                            startAt(nextIdx)
+                        }
+                    }
                 }
             }
 
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
-                val i = p.currentMediaItemIndex
-                val st = _player.value
-                _player.update {
-                    it.copy(
-                        index = i.coerceAtLeast(0),
-                        current = st.queue.getOrNull(i) ?: st.current,
-                        durationMs = p.duration.coerceAtLeast(0),
-                    )
-                }
+                // 播放器里只有当前这一首，currentMediaItemIndex 恒为 0，
+                // 所以队列下标只能由 startAt 维护 —— 这里绝不能拿它去覆盖 index。
+                _player.update { it.copy(durationMs = p.duration.coerceAtLeast(0)) }
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -334,14 +344,14 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
                         val fresh = resolveUrl(t)
                         val p = PlayerHolder.peek()
                         val idx = p?.currentMediaItemIndex ?: -1
-                        if (fresh != null && p != null && idx >= 0) {
-                            p.replaceMediaItem(idx, PlayerHolder.mediaItemOf(t, fresh))
+                        if (fresh.url != null && p != null && idx >= 0) {
+                            p.replaceMediaItem(idx, PlayerHolder.mediaItemOf(t, fresh.url))
                             p.seekTo(idx, resumeAt)
                             p.play()
                             _player.update { it.copy(error = null, loading = false) }
                         } else {
                             _player.update {
-                                it.copy(error = "重新取地址失败：${readable(error)}", loading = false)
+                                it.copy(error = "重新取地址失败：${fresh.error ?: readable(error)}", loading = false)
                             }
                         }
                         selfHealing = false
@@ -389,38 +399,38 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * 解析带超时和一次重试。
+     *
+     * ## 为什么必须重试
+     *
+     * 手机的网络比台式机差得多，切 Wi-Fi、熄屏、后台限流都会让单次请求失败。
+     * 而以前的 [playAll] 是**一次性解析整张歌单**——同步前只有 6 首，同步后是 47 首，
+     * 请求数翻了 8 倍，任何一次抖动都会让那一首变成「取不到播放地址」。
+     * 没有超时的话，一个卡住的连接就能把整次播放拖到用户以为死机。
+     */
+    private suspend fun resolveUrlRetrying(t: TrackCore): Resolved {
+        val first = kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { resolveUrl(t) }
+            ?: Resolved(null, "解析超时（${RESOLVE_TIMEOUT_MS / 1000} 秒没有响应）")
+        if (first.url != null) return first
+        // 本地文件不存在重试也没用
+        if (t.type == "local") return first
+        kotlinx.coroutines.delay(400)
+        val second = kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { resolveUrl(t) }
+            ?: return Resolved(null, "${first.error ?: "未知原因"}；重试也超时")
+        return if (second.url != null) second else Resolved(null, "${first.error ?: "未知原因"}；重试后仍失败")
+    }
+
     /** 播一个歌单 */
     fun playAll(tracks: List<TrackCore>, startIndex: Int = 0) {
         if (tracks.isEmpty()) {
             toast("这个歌单还是空的")
             return
         }
-        viewModelScope.launch {
-            _player.update { it.copy(loading = true, error = null) }
-            val items = mutableListOf<androidx.media3.common.MediaItem>()
-            val startPos = mutableListOf<Int>()
-            for ((i, t) in tracks.withIndex()) {
-                val url = resolveUrl(t) ?: continue
-                items.add(PlayerHolder.mediaItemOf(t, url))
-                startPos.add(i)
-            }
-            if (items.isEmpty()) {
-                _player.update { it.copy(loading = false) }
-                return@launch
-            }
-            val idx = startPos.indexOf(startIndex).let { if (it >= 0) it else 0 }
-            withContext(Dispatchers.Main) {
-                val p = exo
-                _player.update { it.copy(queue = tracks, index = idx) }
-                p.setMediaItems(items)
-                p.prepare()
-                p.seekTo(idx, 0L)
-                applyPlayMode()
-                startPlaybackService()
-                p.play()
-                _player.update { it.copy(loading = false) }
-            }
-        }
+        val idx = startIndex.coerceIn(0, tracks.lastIndex)
+        // 队列只记在状态里，ExoPlayer 每首歌自己装载一次（见 startAt）。
+        _player.update { it.copy(queue = tracks, index = idx) }
+        startAt(idx)
     }
 
     fun togglePlayPause() {
@@ -447,13 +457,17 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun next() {
-        val p = PlayerHolder.peek() ?: return
-        if (p.hasNextMediaItem()) p.seekToNextMediaItem()
+        val st = _player.value
+        if (st.queue.isEmpty()) return
+        val nextIdx = if (st.index + 1 < st.queue.size) st.index + 1 else 0
+        startAt(nextIdx)
     }
 
     fun prev() {
-        val p = PlayerHolder.peek() ?: return
-        if (p.hasPreviousMediaItem()) p.seekToPreviousMediaItem()
+        val st = _player.value
+        if (st.queue.isEmpty()) return
+        val prevIdx = if (st.index - 1 >= 0) st.index - 1 else st.queue.lastIndex
+        startAt(prevIdx)
     }
 
     fun seekTo(ms: Long) {
@@ -462,13 +476,38 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 点队列里的某一行：切到那首并接着播 */
     fun seekToQueue(index: Int) {
-        val st = _player.value
-        if (index !in st.queue.indices) return
-        val p = PlayerHolder.peek() ?: return
-        // 播放器里的 item 与队列可能因解析失败而错位，越界就不动
-        if (index <= st.queue.lastIndex) {
-            p.seekTo(index, 0L)
-            p.play()
+        if (index !in _player.value.queue.indices) return
+        startAt(index)
+    }
+
+    /**
+     * 切到队列第 [index] 首并开始播。
+     *
+     * ExoPlayer 里始终只有**一个** item —— 队列存在于 [PlayerUi.queue] 里，
+     * 由这里按需解析下一首。这样同步来 47 首的歌单也只需先解析一首就能出声，
+     * 而不是连打 47 次 playurl 才肯开始播。
+     */
+    private fun startAt(index: Int) {
+        val q = _player.value.queue
+        val t = q.getOrNull(index) ?: return
+        viewModelScope.launch {
+            _player.update { it.copy(loading = true, index = index, current = t, error = null) }
+            val r = resolveUrlRetrying(t)
+            if (r.url == null) {
+                _player.update {
+                    it.copy(loading = false, error = "取不到「${t.title}」的播放地址：${r.error ?: "未知原因"}")
+                }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                val p = exo
+                p.setMediaItem(PlayerHolder.mediaItemOf(t, r.url))
+                p.prepare()
+                applyPlayMode()
+                startPlaybackService()
+                p.play()
+                _player.update { it.copy(loading = false) }
+            }
         }
     }
 
@@ -487,26 +526,15 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
         applyPlayMode()
     }
 
+    /**
+     * 播放器里始终只有一个 item，所以 repeatMode **必须恒为 OFF**：
+     * 设成 ALL/ONE 会让同一首歌无限循环，[Player.STATE_ENDED] 永远不触发，
+     * 队列就再也不会前进。循环/随机交给 [onPlaybackStateChanged] 里的队列逻辑。
+     */
     fun applyPlayMode() {
         val p = PlayerHolder.peek() ?: return
-        when (settings.playMode) {
-            "loop-one" -> {
-                p.repeatMode = Player.REPEAT_MODE_ONE
-                p.shuffleModeEnabled = false
-            }
-            "shuffle" -> {
-                p.repeatMode = Player.REPEAT_MODE_ALL
-                p.shuffleModeEnabled = true
-            }
-            "sequential" -> {
-                p.repeatMode = Player.REPEAT_MODE_OFF
-                p.shuffleModeEnabled = false
-            }
-            else -> {
-                p.repeatMode = Player.REPEAT_MODE_ALL
-                p.shuffleModeEnabled = false
-            }
-        }
+        p.repeatMode = Player.REPEAT_MODE_OFF
+        p.shuffleModeEnabled = false
         // 让界面刷新一次模式文字
         _player.update { it.copy() }
     }
@@ -522,26 +550,47 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
         _player.update { PlayerUi() }
     }
 
+    /** 解析结果：要么有直链，要么带一句**说得清为什么**的失败原因。 */
+    private data class Resolved(val url: String?, val error: String?)
+
     /**
      * 解析播放直链。
      * 注意桌面端把这一步放在主进程 + 本地代理里，安卓端直接把 DASH 的 baseUrl 交给 ExoPlayer，
      * 由 PlayerHolder 注入 Referer 头来绕过 403。
+     *
+     * ## 为什么要带 error 出去（踩过的坑）
+     *
+     * 以前这里失败时把 `e.message` 写进 `_player.value.error` 就返回 null，而紧接着
+     * [playAll] 会用「取不到「X」的播放地址」把它**覆盖掉**。结果所有故障在界面上
+     * 长得一模一样 —— 缺 cid、风控 412、登录态失效、网络不通全都显示同一句话，
+     * 用户报「同步之后找不到播放地址」时完全无从判断。真实原因必须一路带到界面上。
+     *
+     * 缺 cid 单独给一句提示：同步过来的旧记录可能没有 cid（track 表里有条目、
+     * 但 core 里 cid=0），[com.bilimusic.player.net.BiliClient.audioStreams] 会直接抛
+     * -400「缺少 bvid 或 cid」，那是数据问题，不是网络问题。
      */
-    private suspend fun resolveUrl(t: TrackCore): String? = withContext(Dispatchers.IO) {
+    private suspend fun resolveUrl(t: TrackCore): Resolved = withContext(Dispatchers.IO) {
         try {
             if (t.type == "local") {
                 // 本地音源存的是文件路径
                 val path = t.bvid
-                return@withContext if (path.isEmpty()) null else path
+                return@withContext if (path.isEmpty()) {
+                    Resolved(null, "本地曲目没有记录文件路径")
+                } else {
+                    Resolved(path, null)
+                }
             }
+            if (t.bvid.isEmpty()) return@withContext Resolved(null, "这条记录缺 bvid")
+            if (t.cid <= 0) return@withContext Resolved(null, "这条记录缺 cid（多半是同步过来的旧数据）")
             val streams: List<AudioStream> = bili.audioStreams(t.bvid, t.cid)
+            if (streams.isEmpty()) return@withContext Resolved(null, "接口没有返回任何音轨")
             val preferred = settings.quality
             val picked = streams.firstOrNull { it.id == preferred }
                 ?: streams.maxByOrNull { it.bandwidth }
-            picked?.urls?.firstOrNull()
+            val url = picked?.urls?.firstOrNull()
+            if (url.isNullOrEmpty()) Resolved(null, "音轨里没有可用地址") else Resolved(url, null)
         } catch (e: Exception) {
-            _player.update { it.copy(error = e.message) }
-            null
+            Resolved(null, e.message ?: e.javaClass.simpleName)
         }
     }
 
@@ -581,5 +630,8 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         const val LOVE_ID = "__loved__"
+
+        /** 单次直链解析的上限；超时后重试一次，仍失败就报错给用户看。 */
+        private const val RESOLVE_TIMEOUT_MS = 12_000L
     }
 }
