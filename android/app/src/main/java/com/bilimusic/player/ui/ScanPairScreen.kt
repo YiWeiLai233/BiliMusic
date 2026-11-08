@@ -2,6 +2,7 @@ package com.bilimusic.player.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -85,6 +86,10 @@ fun ScanPairScreen(
     LaunchedEffect(Unit) {
         if (!hasPermission) launcher.launch(Manifest.permission.CAMERA)
     }
+
+    // 扫码页是全屏页而不是弹窗，必须自己接返回键：
+    // 否则按返回会越过同步页直接退出 App（外层 AppRoot 的 BackHandler 只看到 Route.Sync）。
+    BackHandler { onBack() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermission) {

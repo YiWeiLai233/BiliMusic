@@ -2,6 +2,8 @@ package com.bilimusic.player
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -72,6 +74,12 @@ sealed interface Route {
     data object NowPlaying : Route
 }
 
+/**
+ * 顶层页连按两次退出的时间窗口（毫秒）。
+ * 2 秒是 Android 上的惯例值（Toast 展示时长同量级），太短容易反复误触。
+ */
+private const val EXIT_WINDOW_MS = 2000L
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,6 +110,42 @@ fun AppRoot() {
 
     fun pop() {
         if (stack.value.size > 1) stack.value = stack.value.dropLast(1)
+    }
+
+    // ---- 系统返回键 ----
+    // 之前整个工程没有一处 BackHandler，按返回键直接退出 Activity，
+    // 表现就是「在二级页面按返回，整个 App 没了」。
+    //
+    // 现在的规则（按返回键）：
+    //   1. 栈里有上一页（歌单详情 / 收藏夹 / 同步页 / 播放页）→ 回到上一页；
+    //   2. 停在「收藏夹」「我的」这两个顶层标签页 → 回到「我的音乐」；
+    //   3. 已在「我的音乐」（首页）→ 连按两次才退出到桌面，
+    //      第一次只提示「再按一次退出」，避免手滑把 App 关掉。
+    //
+    // 用 LocalActivity 而不是 `context as Activity`：context 可能是 ContextWrapper，
+    // 直接强转在部分机型上会 ClassCastException。
+    val activity = androidx.activity.compose.LocalActivity.current
+    var lastBackAt by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+
+    BackHandler {
+        val cur = stack.value.last()
+        when {
+            stack.value.size > 1 -> pop()
+            cur !is Route.Library -> {
+                // 顶层标签页之间返回首页，并刷新一下首页数据
+                stack.value = listOf(Route.Library)
+                vm.refreshLibrary()
+            }
+            else -> {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastBackAt <= EXIT_WINDOW_MS) {
+                    activity?.finish()
+                } else {
+                    lastBackAt = now
+                    vm.toast("再按一次退出")
+                }
+            }
+        }
     }
 
     Box(Modifier.fillMaxSize().background(BgDeep).statusBarsPadding().navigationBarsPadding()) {
