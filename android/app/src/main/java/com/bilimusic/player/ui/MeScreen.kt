@@ -54,6 +54,7 @@ import kotlinx.coroutines.delay
 fun MeScreen(
     vm: BiliViewModel,
     onOpenSync: () -> Unit,
+    onOpenLibrary: () -> Unit = {},
 ) {
     val nav by vm.nav.collectAsState()
     val bili = vm.bili
@@ -194,7 +195,7 @@ fun MeScreen(
                     importText = ""
                     // 导入成功后直接跳「我的库」：这些歌不属于任何歌单，
                     // 不跳过去用户根本不知道它们躺在哪儿（曾报「导入后没显示」）
-                    vm.importLink(text)
+                    vm.importLink(text) { n -> if (n > 0) onOpenLibrary() }
                 }) {
                     Text("导入", color = Brand)
                 }

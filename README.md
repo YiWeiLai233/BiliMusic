@@ -62,15 +62,16 @@ node scripts/test-hidden.js       # 收藏夹条目隐藏
 cd android && gradle :app:assembleRelease
 # 产物：android/app/build/outputs/apk/release/app-release.apk
 
-# 单元测试（94 项）：包括 Robolectric 在 SDK 24/34/35 上真实启动 MainActivity
+# 单元测试（101 项）：包括 Robolectric 在 SDK 24/34/35 上真实启动 MainActivity
 gradle :app:testDebugUnitTest
 ```
 
-注意五点：
+注意六点：
 
 - CameraX 1.6.x 要求 compileSdk 36，工程目前停在 35，所以相机依赖固定在 `1.5.3`。
 - `StartupTest` 用 Robolectric 真的把 `App.onCreate` 和 `MainActivity.onCreate` 跑一遍（含 Compose 首帧）。它存在的理由是：没有真机时，属性初始化顺序这类**冷启动必崩**的问题只能靠它发现 —— 实际就抓到过一次（`BiliViewModel._libRev` 声明在 `init` 之后，导致 `refreshLibrary()` 里 NPE）。
 - 播放器里**始终只放当前这一首**（v0.1.3 起），队列由 `PlayerUi.queue` + index 维护，切歌时才解析直链。以前是「先把整张歌单解析完再播」，同步来 47 首就要连打 47 次 playurl 才出声，任何一次网络抖动都会让那首静默消失 —— 表现为「同步之后找不到播放地址」。
+- 首页的「**我的库**」是「链接收藏」与「跨设备同步」进来的曲目的唯一入口（v0.1.4 起）。这些曲目既不属于任何歌单、也不在「我喜欢的歌」里，早先只渲染后两者，于是导入成功却完全看不见 —— 导入完成后会自动跳转到这一页。
 - App 内「我的 → 崩溃日志」可以直接查看/复制 `filesDir/crash.log`（最近 5 条，含设备型号与系统版本）。拿不到 adb 时靠它排障。
 - 签名密钥 `android/app/bilimusic.jks` 不入库（口令见 `build.gradle.kts`，是公开的调试用密钥）。新克隆的环境没有它时 `assembleRelease` 仍能出包，只是未签名；需要签名就先跑一次：
 

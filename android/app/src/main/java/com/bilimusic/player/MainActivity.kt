@@ -47,6 +47,7 @@ import com.bilimusic.player.ui.Brand
 import com.bilimusic.player.ui.FavoritesScreen
 import com.bilimusic.player.ui.FolderScreen
 import com.bilimusic.player.ui.LibraryScreen
+import com.bilimusic.player.ui.LibraryTracksScreen
 import com.bilimusic.player.ui.MeScreen
 import com.bilimusic.player.ui.NowPlayingScreen
 import com.bilimusic.player.ui.PlayerBar
@@ -66,6 +67,8 @@ import com.bilimusic.player.ui.Toast
 sealed interface Route {
     data object Library : Route
 
+    /** 「我的库」：库里全部曲目（链接收藏导入的歌只能从这里看到） */
+    data object LibraryTracks : Route
     data class Playlist(val id: String, val title: String) : Route
     data object Favorites : Route
     data class Folder(val id: Long, val title: String) : Route
@@ -161,6 +164,13 @@ fun AppRoot() {
                         },
                         onOpenFavorites = { push(Route.Favorites); vm.loadFolders() },
                         onOpenSync = { push(Route.Sync) },
+                        onOpenLibrary = { push(Route.LibraryTracks) },
+                    )
+
+                    is Route.LibraryTracks -> LibraryTracksScreen(
+                        vm = vm,
+                        onBack = { pop() },
+                        onOpenPlayer = { push(Route.NowPlaying) },
                     )
 
                     is Route.Playlist -> PlaylistScreen(
@@ -188,6 +198,7 @@ fun AppRoot() {
                     is Route.Me -> MeScreen(
                         vm = vm,
                         onOpenSync = { push(Route.Sync) },
+                        onOpenLibrary = { push(Route.LibraryTracks) },
                     )
 
                     is Route.Sync -> SyncScreen(vm = vm, onBack = { pop() })

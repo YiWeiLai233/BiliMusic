@@ -57,6 +57,10 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
     private val _playlists = MutableStateFlow<List<PlaylistUi>>(emptyList())
     val playlists: StateFlow<List<PlaylistUi>> = _playlists.asStateFlow()
 
+    /** 库里的曲目总数，首页「我的库」入口上显示 */
+    private val _libCount = MutableStateFlow(0)
+    val libCount: StateFlow<Int> = _libCount.asStateFlow()
+
     private val _player = MutableStateFlow(PlayerUi())
     val player: StateFlow<PlayerUi> = _player.asStateFlow()
 
@@ -113,7 +117,20 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
                 add(PlaylistUi(p.id, p.title.v, lib.itemKeys(p.id).size))
             }
         }
+        _libCount.value = lib.liveTracks().size
     }
+
+    /**
+     * 直接躺在库里的全部曲目（对应桌面端侧边栏「我的库」）。
+     *
+     * ## 为什么需要它
+     *
+     * 「链接收藏」导入的曲目只会进 tracks 表，不会自动进任何歌单；
+     * 以前首页只渲染「我喜欢的歌」和自建歌单，于是导入成功了却
+     * **在界面上完全看不到**——用户只能看到一句「已导入 N 首」。
+     */
+    fun libraryTracks(): List<TrackCore> =
+        lib.liveTracks().sortedWith(compareByDescending<TrackCore> { it.title.isEmpty() }.thenBy { it.title })
 
     fun playlistTracks(id: String): List<TrackCore> =
         if (id == LOVE_ID) lib.lovedKeys().mapNotNull { lib.track(it) }
@@ -256,8 +273,14 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- 链接导入 ----------------
 
-    /** 解析并导入链接里的曲目 */
-    fun importLink(text: String) {
+    /**
+     * 解析并导入链接里的曲目。
+     *
+     * [onDone] 在导入结束后回调（参数是成功条数，失败时是 -1），
+     * 用来让界面在导入成功后直接跳到「我的库」——否则用户只能看到
+     * 一句「已导入 N 首」，却不知道去哪儿找这些歌。
+     */
+    fun importLink(text: String, onDone: ((Int) -> Unit)? = null) {
         viewModelScope.launch {
             _busy.value = "正在解析链接…"
             try {
@@ -284,10 +307,16 @@ class BiliViewModel(app: Application) : AndroidViewModel(app) {
                 persist()
                 refreshLibrary()
                 _busy.value = null
-                toast("已导入 $n 首")
+                if (n > 0) {
+                    toast("已导入 $n 首，去「我的库」看看")
+                } else {
+                    toast("没解析出可导入的曲目，检查链接是否有效")
+                }
+                onDone?.invoke(n)
             } catch (e: Exception) {
                 _busy.value = null
                 toast("解析失败：${e.message}")
+                onDone?.invoke(-1)
             }
         }
     }

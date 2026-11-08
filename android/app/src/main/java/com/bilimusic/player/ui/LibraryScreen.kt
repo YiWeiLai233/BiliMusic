@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
@@ -31,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,7 +54,9 @@ fun LibraryScreen(
     onOpenPlaylist: (String) -> Unit,
     onOpenFavorites: () -> Unit,
     onOpenSync: () -> Unit,
+    onOpenLibrary: () -> Unit,
 ) {
+    val libCount by vm.libCount.collectAsState()
     var creating by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         TopBar("我的音乐") {
@@ -83,6 +87,33 @@ fun LibraryScreen(
                     Column(Modifier.weight(1f)) {
                         Text("B 站收藏夹", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         Text("把收藏夹当成歌单来听", color = TextSecondary, fontSize = 11.sp)
+                    }
+                    Icon(Icons.Filled.PlayArrow, null, tint = TextSecondary)
+                }
+                Spacer(Modifier.height(14.dp))
+                // 「我的库」：链接收藏导入的曲目只能在这里看到
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(BgPanel)
+                        .clickable(onClick = onOpenLibrary)
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.size(46.dp).clip(RoundedCornerShape(10.dp))
+                            .background(Brand.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.MusicNote, null, tint = Brand) }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("我的库", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (libCount > 0) "$libCount 首 · 导入和收藏的都在这里" else "链接收藏导入的歌会出现在这里",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                        )
                     }
                     Icon(Icons.Filled.PlayArrow, null, tint = TextSecondary)
                 }
