@@ -1,0 +1,19 @@
+# Gradle 构建产物
+.gradle/
+build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+captures/
+
+# 本机安装出来的 APK（要交付时从 build/outputs 里取一份放别处）
+*.apk
+*.ap_
+*.dex
+
+# 本地自签调试密钥（口令就写在 build.gradle.kts 里，是公开的调试用密钥，
+# 不入库；新环境按 README「安卓版」小节里的 keytool 命令重新生成即可）
+*.jks
+*.keystore

@@ -45,12 +45,42 @@ npm run test:layout    # 三档窗口尺寸布局审计
 npm run test:sync      # 跨设备同步：CRDT 合并 / 编解码 / 双向投影 / 真 HTTP 交换
 node scripts/check-dom.js         # 静态检查：app.js 里引用的 DOM id 是否都存在
 node scripts/test-sync-ui.js      # 同步面板 UI 冒烟（需 electron 主进程，见文末注意事项）
+node scripts/gen-sync-fixture.js  # 重新生成给安卓端用的桌面同步码 fixture
 node scripts/test-library.js      # 本地库 + 歌单 + 本地代理
 node scripts/test-loved.js        # 「我喜欢的歌」三源汇总与排除表（需登录）
 node scripts/test-multipage.js    # 多 P 拆分（真实接口）
 node scripts/test-part-audio.js   # 各分 P 音频流可用性
 node scripts/test-hidden.js       # 收藏夹条目隐藏
 ```
+
+## 安卓版
+
+`android/` 是独立的 Kotlin + Compose 工程，功能与桌面端对齐（扫码登录、收藏夹、多 P 拆分、歌单、「我喜欢的歌」、后台播放），并与桌面端**同一套同步协议**互通。配对支持扫桌面端上的二维码（CameraX + zxing）。
+
+```bash
+# 需要 Android SDK（platforms;android-35 + build-tools;35.0.0）与 JDK 17+
+cd android && gradle :app:assembleRelease
+# 产物：android/app/build/outputs/apk/release/app-release.apk
+
+# 单元测试（56 项）：包括 Robolectric 在 SDK 24/34/35 上真实启动 MainActivity
+gradle :app:testDebugUnitTest
+```
+
+注意四点：
+
+- CameraX 1.6.x 要求 compileSdk 36，工程目前停在 35，所以相机依赖固定在 `1.5.3`。
+- `StartupTest` 用 Robolectric 真的把 `App.onCreate` 和 `MainActivity.onCreate` 跑一遍（含 Compose 首帧）。它存在的理由是：没有真机时，属性初始化顺序这类**冷启动必崩**的问题只能靠它发现 —— 实际就抓到过一次（`BiliViewModel._libRev` 声明在 `init` 之后，导致 `refreshLibrary()` 里 NPE）。
+- App 内「我的 → 崩溃日志」可以直接查看/复制 `filesDir/crash.log`（最近 5 条，含设备型号与系统版本）。拿不到 adb 时靠它排障。
+- 签名密钥 `android/app/bilimusic.jks` 不入库（口令见 `build.gradle.kts`，是公开的调试用密钥）。新克隆的环境没有它时 `assembleRelease` 仍能出包，只是未签名；需要签名就先跑一次：
+
+```bash
+cd android/app && keytool -genkeypair -storetype JKS -keystore bilimusic.jks \
+  -storepass bilimusic -keypass bilimusic -alias bilimusic \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=BiliMusic, OU=Dev, O=BiliMusic, L=Shanghai, S=Shanghai, C=CN"
+```
+
+同步协议的完整说明见 `android/SYNC_DESIGN.md`。
 
 ## 已知问题
 
@@ -76,6 +106,7 @@ src/
   store.js           设置持久化
   sync.js            同步原语：HLC / 分数位置 / CRDT 合并 / 二进制编解码
   syncBridge.js      同步桥：库结构 ↔ SyncDoc 双向投影 + 局域网服务 + UDP 发现
+android/             安卓版（Kotlin + Compose），同协议同步；SYNC_DESIGN.md 在目录里
 fixtures/            双端互通的同步码样本（桌面 ↔ 安卓互相解码的回归输入）
 scripts/             启动器、图标生成、各测试
 ```
