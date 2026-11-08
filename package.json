@@ -8,6 +8,7 @@
     "dist": "electron-builder --win",
     "icons": "python scripts/make-icons.py",
     "test:e2e": "node scripts/test-e2e.js",
+    "test:sync": "node scripts/test-sync.js",
     "test:ui": "electron scripts/test-ui.js --no-sandbox --disable-gpu --disable-crash-reporter",
     "test:layout": "electron scripts/test-layout.js --no-sandbox --disable-gpu --disable-crash-reporter"
   },

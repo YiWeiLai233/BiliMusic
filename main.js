@@ -2,6 +2,8 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, dialog, powerSaveBlocker } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
+const crypto = require('node:crypto');
 const fsp = require('node:fs/promises');
 const QRCode = require('qrcode');
 
@@ -10,6 +12,7 @@ const { AudioProxy } = require('./src/audioProxy');
 const { Store } = require('./src/store');
 const { Library } = require('./src/library');
 const { scanFolder, listAudioFiles } = require('./src/localLibrary');
+const { SyncService } = require('./src/syncBridge');
 
 // ---- 数据目录 ----
 // 开发态：项目内 .userdata（便携，也规避本机 AppData 权限问题）
@@ -63,6 +66,8 @@ let proxy = null;
 let store = null;
 /** @type {Library} */
 let library = null;
+/** @type {SyncService} */
+let sync = null;
 let psbId = null;
 let quitting = false;
 /** 扫描任务状态，防止重复触发 */
@@ -267,6 +272,37 @@ function send(channel, payload) {
   }
 }
 
+/**
+ * 库内容被外部改动过（同步把对方的歌单/曲目并进来了）。
+ * 通知渲染层重新拉一遍数据，否则界面还停在旧样子。
+ */
+function notifyLibraryChanged() {
+  send('library:changed', { at: Date.now() });
+}
+
+/**
+ * 本机的稳定设备标识，存在数据目录里。
+ *
+ * CRDT 里时间戳相同的两次并发写入要靠设备 id 定胜负，所以这个值必须**一次生成、
+ * 永久不变**（换掉会让「同一毫秒内谁赢」的判定在新旧记录之间变得不一致）。
+ */
+function getDeviceId() {
+  const f = path.join(DATA_DIR, 'device-id.txt');
+  try {
+    const s = fs.readFileSync(f, 'utf8').trim();
+    if (/^d[0-9a-f]{10}$/.test(s)) return s;
+  } catch {
+    /* 没就生成 */
+  }
+  const id = 'd' + crypto.randomBytes(5).toString('hex');
+  try {
+    fs.writeFileSync(f, id, 'utf8');
+  } catch {
+    /* ignore */
+  }
+  return id;
+}
+
 // ---------------------------------------------------------------- 媒体键
 
 const MEDIA_KEYS = ['MediaPlayPause', 'MediaNextTrack', 'MediaPreviousTrack', 'MediaStop'];
@@ -340,6 +376,22 @@ function updatePowerBlocker(playing) {
 }
 
 // ---------------------------------------------------------------- IPC
+
+/** 把任意文本转成二维码图片 dataURL（同步配对串用） */
+async function qrDataUrlOf(text) {
+  if (!text) return '';
+  try {
+    return await QRCode.toDataURL(text, {
+      margin: 1,
+      width: 320,
+      color: { dark: '#000000', light: '#ffffff' },
+      errorCorrectionLevel: 'M',
+    });
+  } catch (e) {
+    console.warn('[main] 生成同步二维码失败', e.message);
+    return '';
+  }
+}
 
 function registerIpc() {
   // --- 登录 ---
@@ -749,6 +801,84 @@ function registerIpc() {
     }
   });
 
+  // --- 跨设备同步 ---
+  /**
+   * 这套通道和安卓端是同一套协议：交换的是一整份 SyncDoc 二进制载荷，
+   * 两端各自 merge 之后自然收敛。没有服务器，也没有「谁说了算」。
+   */
+  ipcMain.handle('sync:info', async () => {
+    const info = sync.info();
+    return { ...info, qr: sync.pairingPayload(), qrDataUrl: await qrDataUrlOf(sync.pairingPayload()) };
+  });
+
+  ipcMain.handle('sync:start', async () => {
+    try {
+      const info = await sync.startServer();
+      const payload = sync.pairingPayload();
+      return { ok: true, ...info, qr: payload, qrDataUrl: await qrDataUrlOf(payload) };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('sync:stop', async () => {
+    sync.stopServer();
+    return { ok: true, ...sync.info() };
+  });
+
+  /** 主动连对方（同一 Wi-Fi 下点一下设备名就走这里） */
+  ipcMain.handle('sync:now', async (_e, { host, port, token }) => {
+    try {
+      const res = await sync.syncNow(host, Number(port), token);
+      notifyLibraryChanged();
+      return { ok: true, ...res };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  /**
+   * 文本同步码：把整份状态压成一段 base64url，微信/剪贴板都能传。
+   * 没有同一 Wi-Fi 也能用，代价是超过几百首之后码会很长。
+   */
+  ipcMain.handle('sync:export-code', async () => {
+    try {
+      const code = sync.exportCode();
+      return { ok: true, code, length: code.length };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('sync:import-code', async (_e, { code } = {}) => {
+    try {
+      if (!code || !String(code).trim()) return { ok: false, error: '同步码是空的' };
+      const res = sync.importCode(String(code).trim());
+      notifyLibraryChanged();
+      return { ok: true, ...res };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  /** 手动填对端地址（对方没被发现、或跨网段时用） */
+  ipcMain.handle('sync:pair', async (_e, { text } = {}) => {
+    try {
+      const m = /^bilimusic:\/\/pair\?(.+)$/.exec(String(text || '').trim());
+      if (!m) return { ok: false, error: '配对串格式不对' };
+      const q = new URLSearchParams(m[1]);
+      const host = q.get('ip');
+      const port = Number(q.get('port'));
+      const token = q.get('token');
+      if (!host || !port || !token) return { ok: false, error: '配对串缺少字段' };
+      const res = await sync.syncNow(host, port, token);
+      notifyLibraryChanged();
+      return { ok: true, ...res };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('player:state', async (_e, s) => {
     state.playing = !!s.playing;
     state.title = s.title || '';
@@ -853,6 +983,7 @@ app.on('before-quit', () => {
   quitting = true;
   unregisterMediaKeys();
   updatePowerBlocker(false);
+  if (sync) sync.stopServer();
   if (proxy) proxy.stop();
 });
 
@@ -868,6 +999,14 @@ app.whenReady().then(async () => {
   });
   await proxy.start();
   console.log('[main] audio proxy on', proxy.baseUrl);
+
+  // 同步服务：不占固定端口（找系统要一个空闲口），设备名给对端做展示用
+  sync = new SyncService({
+    library,
+    file: path.join(DATA_DIR, 'sync-state.json'),
+    deviceId: getDeviceId(),
+    deviceName: os.hostname() || 'Windows',
+  });
 
   registerIpc();
   createWindow();

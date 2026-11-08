@@ -2516,6 +2516,221 @@ async function openSettings() {
   el.settingsMask.hidden = false;
 }
 
+// ═════════════════════════════════ 跨设备同步 ═════════════════════════════════
+
+let syncTimer = null;
+/**
+ * 状态行「保护期」：面板每 2 秒轮询一次 info()，轮询回来会把状态行刷成
+ * 「服务已启动 · X」。刚做完一次同步/刚报出一个错误，用户还没来得及看，
+ * 结果两秒内就被覆盖掉——所以主动写入的状态行要保留几秒，轮询期间不许覆盖。
+ */
+let syncStatusHold = 0;
+
+const syncEl = {
+  mask: $('sync-mask'),
+  status: $('sync-status'),
+  btnStart: $('btn-sync-start'),
+  btnStop: $('btn-sync-stop'),
+  local: $('sync-local'),
+  addr: $('sync-addr'),
+  token: $('sync-token'),
+  qr: $('sync-qr'),
+  peers: $('sync-peers'),
+  peersHint: $('sync-peers-hint'),
+  host: $('sync-host'),
+  port: $('sync-port'),
+  pass: $('sync-pass'),
+  btnConnect: $('btn-sync-connect'),
+  btnExport: $('btn-sync-export'),
+  btnImport: $('btn-sync-import'),
+  code: $('sync-code'),
+};
+
+function renderSyncStatus(text, kind = '') {
+  syncEl.status.textContent = text;
+  syncEl.status.className = 'sync-status' + (kind ? ` ${kind}` : '');
+  // 主动写入的状态行（错误 / 同步结果）要留一会儿，别被轮询立刻刷掉
+  syncStatusHold = kind ? Date.now() + 5000 : 0;
+}
+
+/** 轮询专用：只在没有待展示的状态行时才刷新状态文本 */
+function renderSyncInfo(info, { quiet = false } = {}) {
+  if (!info) return;
+  const running = !!info.running;
+  syncEl.btnStart.hidden = running;
+  syncEl.btnStop.hidden = !running;
+  syncEl.local.hidden = !running;
+
+  if (running) {
+    syncEl.addr.textContent = `${info.ip || '?'}:${info.port || '?'}`;
+    syncEl.token.textContent = info.token || '—';
+    if (info.qrDataUrl) {
+      syncEl.qr.innerHTML = `<img alt="同步配对二维码" src="${info.qrDataUrl}" />`;
+    } else {
+      syncEl.qr.innerHTML = '<div class="qr-skeleton">二维码生成失败</div>';
+    }
+    if (!quiet || Date.now() >= syncStatusHold) {
+      renderSyncStatus(`服务已启动 · ${info.deviceName || '本机'}`, 'ok');
+    }
+  } else {
+    syncEl.qr.innerHTML = '';
+    if (!quiet || Date.now() >= syncStatusHold) renderSyncStatus('未启动');
+  }
+
+  renderSyncPeers(info.peers || []);
+  if (!running) syncEl.peersHint.textContent = '启动本机服务后可被附近设备发现';
+  else if (!(info.peers || []).length) syncEl.peersHint.textContent = '正在监听…';
+  else syncEl.peersHint.textContent = `发现 ${info.peers.length} 台设备`;
+}
+
+function renderSyncPeers(peers) {
+  if (!peers.length) {
+    syncEl.peers.innerHTML =
+      '<div class="empty-hint">同一 Wi-Fi 下打开另一台设备的同步页就会出现在这里</div>';
+    return;
+  }
+  syncEl.peers.innerHTML = '';
+  peers.forEach((p) => {
+    const row = document.createElement('button');
+    row.className = 'sync-peer';
+    row.innerHTML = `<span class="sync-peer-name">${p.name || '未命名设备'}</span><span class="sync-peer-addr">${p.host}:${p.port}</span>`;
+    row.onclick = () => {
+      syncEl.host.value = p.host;
+      syncEl.port.value = String(p.port);
+      syncEl.pass.value = p.token;
+      syncWithPeer();
+    };
+    syncEl.peers.appendChild(row);
+  });
+}
+
+async function openSync() {
+  syncEl.mask.hidden = false;
+  syncEl.code.value = '';
+  try {
+    renderSyncInfo(await window.api.sync.info());
+  } catch (e) {
+    renderSyncStatus(`读取状态失败：${e.message}`, 'err');
+  }
+  // 服务在跑的时候定期刷新对端列表
+  clearInterval(syncTimer);
+  syncTimer = setInterval(async () => {
+    if (syncEl.mask.hidden) return;
+    try {
+      renderSyncInfo(await window.api.sync.info(), { quiet: true });
+    } catch {
+      /* ignore */
+    }
+  }, 2000);
+}
+
+function closeSync() {
+  syncEl.mask.hidden = true;
+  clearInterval(syncTimer);
+  syncTimer = null;
+}
+
+/** 同步完成后把库重新拉一遍，界面才看得见对方的数据 */
+async function afterSync(ok, message) {
+  if (!ok) {
+    renderSyncStatus(message || '同步失败', 'err');
+    return;
+  }
+  renderSyncStatus(message, 'ok');
+  await refreshLibraryData();
+}
+
+async function startSyncServer() {
+  renderSyncStatus('正在启动…');
+  try {
+    const r = await window.api.sync.start();
+    if (!r || r.ok === false) {
+      renderSyncStatus(`启动失败：${(r && r.error) || '未知错误'}`, 'err');
+      return;
+    }
+    renderSyncInfo(r);
+  } catch (e) {
+    renderSyncStatus(`启动失败：${e.message}`, 'err');
+  }
+}
+
+async function stopSyncServer() {
+  try {
+    await window.api.sync.stop();
+  } catch {
+    /* ignore */
+  }
+  try {
+    renderSyncInfo(await window.api.sync.info());
+  } catch {
+    /* ignore */
+  }
+}
+
+async function syncWithPeer() {
+  const host = syncEl.host.value.trim();
+  const port = Number(syncEl.port.value.trim());
+  const token = syncEl.pass.value.trim();
+  if (!host || !port || !token) {
+    renderSyncStatus('IP、端口、口令都要填', 'err');
+    return;
+  }
+  renderSyncStatus('正在同步…');
+  try {
+    const r = await window.api.sync.now(host, port, token);
+    await afterSync(r && r.ok, (r && r.message) || (r && r.error) || '同步失败');
+  } catch (e) {
+    renderSyncStatus(`同步失败：${e.message}`, 'err');
+  }
+}
+
+async function exportSyncCode() {
+  try {
+    const r = await window.api.sync.exportCode();
+    if (!r || !r.code) {
+      renderSyncStatus((r && r.error) || '生成同步码失败', 'err');
+      return;
+    }
+    syncEl.code.value = r.code;
+    try {
+      await navigator.clipboard.writeText(r.code);
+      toast(`同步码已复制（${r.code.length} 字符）`, 3000);
+    } catch {
+      toast('已生成，请手动复制文本框内容', 3000);
+    }
+  } catch (e) {
+    renderSyncStatus(`生成失败：${e.message}`, 'err');
+  }
+}
+
+async function importSyncCode() {
+  const code = syncEl.code.value.trim();
+  if (!code) {
+    renderSyncStatus('先粘贴对方的同步码', 'err');
+    return;
+  }
+  renderSyncStatus('正在合并…');
+  try {
+    const r = await window.api.sync.importCode(code);
+    await afterSync(r && r.ok, (r && r.message) || (r && r.error) || '导入失败');
+  } catch (e) {
+    renderSyncStatus(`导入失败：${e.message}`, 'err');
+  }
+}
+
+function bindSyncEvents() {
+  $('btn-sync').onclick = openSync;
+  $('btn-sync-close').onclick = closeSync;
+  syncEl.mask.onclick = (e) => {
+    if (e.target === syncEl.mask) closeSync();
+  };
+  syncEl.btnStart.onclick = startSyncServer;
+  syncEl.btnStop.onclick = stopSyncServer;
+  syncEl.btnConnect.onclick = syncWithPeer;
+  syncEl.btnExport.onclick = exportSyncCode;
+  syncEl.btnImport.onclick = importSyncCode;
+}
+
 // ═════════════════════════════════ 事件绑定 ═════════════════════════════════
 
 function bindEvents() {
@@ -2763,6 +2978,11 @@ function bindEvents() {
   // 点关闭按钮时询问（closeAction = 'ask'）
   window.api.on('win:ask-close', () => askClose());
 
+  // 同步把对方的歌单/曲目并进来后，主进程会喊一声，这里重新拉数据
+  window.api.on('library:changed', () => {
+    refreshLibraryData().catch(() => {});
+  });
+
   // 设置项
   $('set-close-action').onchange = (e) => window.api.store.set('closeAction', e.target.value);
   $('set-min-tray').onchange = (e) => window.api.store.set('minimizeToTray', e.target.checked);
@@ -2791,6 +3011,7 @@ function bindEvents() {
 
 async function boot() {
   bindEvents();
+  bindSyncEvents();
 
   const settings = await window.api.store.all();
   state.settings = settings;

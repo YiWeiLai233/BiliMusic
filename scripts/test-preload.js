@@ -147,6 +147,33 @@ const RAW = {
 const CALLS = [];
 const LISTENERS = {};
 
+/** 鍏嬮殕鐨勫悓姝ョ姸鎬侊紙鐢卞墽鏈殑鍚屾闈㈡澘鍐冲畾锛?*/
+const FAKE_SYNC = {
+  running: false,
+  ip: '',
+  port: 0,
+  token: '',
+  peers: [],
+  stats: { tracks: 3, playlists: 2, loved: 1, tombstones: 0, device: 'd0000000009' },
+  status: { kind: 'idle', message: '' },
+};
+
+function syncState() {
+  return {
+    running: FAKE_SYNC.running,
+    ip: FAKE_SYNC.ip,
+    port: FAKE_SYNC.port,
+    token: FAKE_SYNC.token,
+    device: FAKE_SYNC.stats.device,
+    deviceName: 'SMOKE-PC',
+    peers: FAKE_SYNC.peers.slice(),
+    stats: { ...FAKE_SYNC.stats },
+    status: { ...FAKE_SYNC.status },
+    qr: FAKE_SYNC.running ? 'bilimusic://pair?ip=192.168.1.23&port=47821&token=abc123def456' : '',
+    qrDataUrl: '',
+  };
+}
+
 contextBridge.exposeInMainWorld('api', {
   bili: {
     qrGenerate: async () => ({ url: 'https://example.com/qr', key: 'k', dataUrl: '' }),
@@ -556,6 +583,39 @@ contextBridge.exposeInMainWorld('api', {
     info: async () => ({ version: '0.1.0', electron: '33', chrome: '130', node: '20', dataDir: HOME, proxyPort: 0 }),
     openExternal: async () => {},
     clearCache: async () => ({ ok: true }),
+  },
+  sync: {
+    info: async () => syncState(),
+    start: async () => {
+      CALLS.push('sync:start');
+      FAKE_SYNC.running = true;
+      FAKE_SYNC.port = 47821;
+      FAKE_SYNC.ip = '192.168.1.23';
+      FAKE_SYNC.token = 'abc123def456';
+      return { ok: true, ...syncState() };
+    },
+    stop: async () => {
+      CALLS.push('sync:stop');
+      FAKE_SYNC.running = false;
+      FAKE_SYNC.peers = [];
+      return { ok: true, ...syncState() };
+    },
+    now: async (host, port, token) => {
+      CALLS.push(`sync:now:${host}:${port}:${token}`);
+      return { ok: true, message: '同步完成：新增 1 首新歌、1 个歌单' };
+    },
+    pair: async (text) => {
+      CALLS.push(`sync:pair:${text}`);
+      return { ok: true, message: '同步完成：已是最新' };
+    },
+    exportCode: async () => {
+      CALLS.push('sync:exportCode');
+      return { ok: true, code: 'BMsFAKEfakecodeEXAMPLE0123456789', length: 30 };
+    },
+    importCode: async (code) => {
+      CALLS.push(`sync:importCode:${String(code).slice(0, 8)}`);
+      return { ok: true, message: '同步完成：新增 2 首新歌' };
+    },
   },
   win: {
     minimize: async () => {},

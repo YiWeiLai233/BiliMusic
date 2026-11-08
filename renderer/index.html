@@ -82,6 +82,7 @@
         </div>
 
         <div class="side-foot">
+          <button class="ghost-btn" id="btn-sync">跨设备同步</button>
           <button class="ghost-btn" id="btn-tray">最小化到托盘</button>
         </div>
       </aside>
@@ -290,6 +291,72 @@
         <div class="modal-foot">
           <button class="ghost-btn" id="btn-pl-cancel">取消</button>
           <button class="ghost-btn primary" id="btn-pl-ok">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────── 跨设备同步 ───────────────────── -->
+    <div class="modal-mask" id="sync-mask" hidden>
+      <div class="modal wide">
+        <div class="modal-head">
+          <h2>跨设备同步</h2>
+          <button class="icon-btn" id="btn-sync-close">✕</button>
+        </div>
+        <div class="sync-body">
+          <p class="sync-intro">
+            不需要服务器：两台设备各自保存一份完整状态，同步时互相交换并合并，
+            任意顺序、任意次数都不会把对方的数据弄丢。
+          </p>
+
+          <div class="sync-status" id="sync-status">未启动</div>
+
+          <div class="sync-actions">
+            <button class="ghost-btn primary" id="btn-sync-start">启动本机同步服务</button>
+            <button class="ghost-btn" id="btn-sync-stop" hidden>停止</button>
+          </div>
+
+          <div class="sync-local" id="sync-local" hidden>
+            <div class="sync-kv"><span>本机地址</span><code id="sync-addr">—</code></div>
+            <div class="sync-kv"><span>配对口令</span><code id="sync-token">—</code></div>
+            <div class="sync-qr" id="sync-qr"></div>
+            <p class="sync-hint">在手机「跨设备同步」里扫这个码即可直连</p>
+          </div>
+
+          <div class="sync-section">
+            <div class="sync-section-head">
+              <span>附近的设备</span>
+              <span class="sync-peers-hint" id="sync-peers-hint">正在监听…</span>
+            </div>
+            <div class="sync-peers" id="sync-peers">
+              <div class="empty-hint">同一 Wi-Fi 下打开另一台设备的同步页就会出现在这里</div>
+            </div>
+          </div>
+
+          <div class="sync-section">
+            <div class="sync-section-head"><span>手动连接</span></div>
+            <div class="sync-manual">
+              <input type="text" id="sync-host" placeholder="对方 IP，如 192.168.1.7" />
+              <input type="text" id="sync-port" placeholder="端口" />
+              <input type="text" id="sync-pass" placeholder="配对口令" />
+              <button class="ghost-btn" id="btn-sync-connect">连接并同步</button>
+            </div>
+          </div>
+
+          <div class="sync-section">
+            <div class="sync-section-head">
+              <span>文本同步码</span>
+              <span class="sync-peers-hint">不同 Wi-Fi 也能用</span>
+            </div>
+            <p class="sync-hint">
+              把你的状态压成一段文字发给对方，对方导入后即可合并。
+              曲目多的时候码会比较长，建议用文件或聊天工具传输。
+            </p>
+            <div class="sync-actions">
+              <button class="ghost-btn" id="btn-sync-export">复制我的同步码</button>
+              <button class="ghost-btn" id="btn-sync-import">导入对方的码</button>
+            </div>
+            <textarea id="sync-code" rows="3" placeholder="同步码会出现在这里，或粘贴对方的码后点「导入」"></textarea>
+          </div>
         </div>
       </div>
     </div>

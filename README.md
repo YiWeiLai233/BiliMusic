@@ -15,6 +15,7 @@ B 站收藏夹纯音频播放器 —— 扫码登录后把你的收藏夹（以�
   - 链接收藏：粘贴 B 站链接批量导入，支持短链 / av 号 / 单视频 / 多 P，可勾选只导入指定分 P
 - **我喜欢的歌**：本地音乐 / 链接收藏 / 收藏夹三源自动汇总，支持「爱心跟随」（持续同步）和「一次性全量加入」，手移除的记排除表不会复活
 - **歌单**：自建歌单、拖拽排序、重命名、导出 / 导入 JSON
+- **跨设备同步（不需要服务器）**：与安卓版互相同步歌单 / 曲目 / 爱心。同一 Wi-Fi 下自动发现对端点一下就同步，也可以扫码或复制一段「文本同步码」异网同步。合并用 CRDT（HLC 时间戳 + 分数位置键 + 墓碑），三方乱序交换也收敛
 - **后台播放**：关闭 / 最小化可收进托盘继续播，全局媒体键 + Windows 媒体浮层，开机自启开关
 - **关闭行为可选**：每次询问 / 收进托盘 / 直接退出
 
@@ -41,6 +42,9 @@ npm run dist
 npm run test:e2e       # 真实接口：登录态、元信息、播放地址、代理 Range、封面
 npm run test:ui        # 渲染进程 UI 全流程（假数据桩）
 npm run test:layout    # 三档窗口尺寸布局审计
+npm run test:sync      # 跨设备同步：CRDT 合并 / 编解码 / 双向投影 / 真 HTTP 交换
+node scripts/check-dom.js         # 静态检查：app.js 里引用的 DOM id 是否都存在
+node scripts/test-sync-ui.js      # 同步面板 UI 冒烟（需 electron 主进程，见文末注意事项）
 node scripts/test-library.js      # 本地库 + 歌单 + 本地代理
 node scripts/test-loved.js        # 「我喜欢的歌」三源汇总与排除表（需登录）
 node scripts/test-multipage.js    # 多 P 拆分（真实接口）
@@ -53,6 +57,7 @@ node scripts/test-hidden.js       # 收藏夹条目隐藏
 - **托盘图标与 exe 路径**：electron.exe 若位于本机 `D:\bilibiliMusicPlayer` 目录树下，Windows 托盘注册必定失败（`tray.getBounds()` 恒为 0）。已排除 ACL / 所有者 / token / userData / exe 内容等因素，换到任意其他目录即正常。`scripts/launch.js` 就是为绕开它而写的。
 - **SmartScreen**：安装包未做代码签名，Windows 会提示「无法识别的应用」，点「更多信息 → 仍要运行」即可。
 - **音频直链有效期约 2 小时**，过期自动重新调 playurl。
+- **跑 Electron 测试前要清 `ELECTRON_RUN_AS_NODE`**：某些环境里这个变量自带 `1`，会让 electron.exe 以纯 Node 模式启动，于是 `test-ui.js` / `test-sync-ui.js` 报 `app.setPath is undefined`。先 `Remove-Item Env:ELECTRON_RUN_AS_NODE`（PowerShell）再跑即可。
 
 ## 结构
 
@@ -69,6 +74,9 @@ src/
   library.js         本地库数据层：曲目、歌单、我喜欢的歌、隐藏表
   localLibrary.js    本地文件扫描 + 标签读取
   store.js           设置持久化
+  sync.js            同步原语：HLC / 分数位置 / CRDT 合并 / 二进制编解码
+  syncBridge.js      同步桥：库结构 ↔ SyncDoc 双向投影 + 局域网服务 + UDP 发现
+fixtures/            双端互通的同步码样本（桌面 ↔ 安卓互相解码的回归输入）
 scripts/             启动器、图标生成、各测试
 ```
 

@@ -74,6 +74,15 @@ contextBridge.exposeInMainWorld('api', {
     set: (key, value) => invoke('store:set', { key, value }),
     patch: (obj) => invoke('store:patch', obj),
   },
+  sync: {
+    info: () => invoke('sync:info'),
+    start: () => invoke('sync:start'),
+    stop: () => invoke('sync:stop'),
+    now: (host, port, token) => invoke('sync:now', { host, port, token }),
+    pair: (text) => invoke('sync:pair', { text }),
+    exportCode: () => invoke('sync:export-code'),
+    importCode: (code) => invoke('sync:import-code', { code }),
+  },
   music: {
     all: () => invoke('music-override:all'),
     set: (bvid, value) => invoke('music-override:set', { bvid, value }),
